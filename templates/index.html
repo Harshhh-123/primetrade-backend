@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Primetrade Task Manager</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; background: #f0f2f5; }
+        .container { max-width: 800px; margin: 30px auto; padding: 20px; }
+        .card { background: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #1a73e8; text-align: center; margin-bottom: 20px; }
+        h2 { color: #333; margin-bottom: 15px; }
+        input, select, textarea { width: 100%; padding: 10px; margin: 8px 0; border: 1px solid #ddd; border-radius: 4px; font-size: 14px; }
+        button { background: #1a73e8; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; margin: 5px; }
+        button:hover { background: #1557b0; }
+        button.danger { background: #e53935; }
+        button.success { background: #43a047; }
+        .message { padding: 10px; border-radius: 4px; margin: 10px 0; }
+        .message.success { background: #e8f5e9; color: #2e7d32; }
+        .message.error { background: #ffebee; color: #c62828; }
+        .task-item { border: 1px solid #eee; padding: 15px; border-radius: 4px; margin: 10px 0; }
+        .task-item h3 { color: #333; }
+        .task-item p { color: #666; font-size: 13px; margin: 5px 0; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        .badge.high { background: #ffebee; color: #c62828; }
+        .badge.medium { background: #fff3e0; color: #e65100; }
+        .badge.low { background: #e8f5e9; color: #2e7d32; }
+        #auth-section { display: block; }
+        #dashboard-section { display: none; }
+        .tabs { display: flex; margin-bottom: 15px; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { border-bottom: 2px solid #1a73e8; color: #1a73e8; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🚀 Primetrade Task Manager</h1>
+
+    <!-- Auth Section -->
+    <div id="auth-section">
+        <div class="card">
+            <div class="tabs">
+                <div class="tab active" onclick="showTab('login')">Login</div>
+                <div class="tab" onclick="showTab('register')">Register</div>
+            </div>
+
+            <div id="login-form">
+                <h2>Login</h2>
+                <input type="text" id="login-username" placeholder="Username">
+                <input type="password" id="login-password" placeholder="Password">
+                <button onclick="login()">Login</button>
+                <div id="login-msg"></div>
+            </div>
+
+            <div id="register-form" style="display:none">
+                <h2>Register</h2>
+                <input type="text" id="reg-username" placeholder="Username">
+                <input type="email" id="reg-email" placeholder="Email">
+                <input type="password" id="reg-password" placeholder="Password">
+                <label><input type="checkbox" id="reg-admin"> Register as Admin</label>
+                <button onclick="register()">Register</button>
+                <div id="reg-msg"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Dashboard Section -->
+    <div id="dashboard-section">
+        <div class="card">
+            <h2>Welcome, <span id="username-display"></span>! 
+                <button class="danger" style="float:right" onclick="logout()">Logout</button>
+            </h2>
+        </div>
+
+        <div class="card">
+            <h2>Create New Task</h2>
+            <input type="text" id="task-title" placeholder="Task Title">
+            <textarea id="task-desc" placeholder="Description" rows="3"></textarea>
+            <select id="task-priority">
+                <option value="low">Low Priority</option>
+                <option value="medium" selected>Medium Priority</option>
+                <option value="high">High Priority</option>
+            </select>
+            <button class="success" onclick="createTask()">Create Task</button>
+            <div id="task-msg"></div>
+        </div>
+
+        <div class="card">
+            <h2>My Tasks <button onclick="loadTasks()" style="font-size:12px;padding:5px 10px">Refresh</button></h2>
+            <div id="tasks-list"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const API = 'http://127.0.0.1:8000/api/v1';
+    let token = localStorage.getItem('token');
+    let currentUser = JSON.parse(localStorage.getItem('user') || '{}');
+
+    if (token) showDashboard();
+
+    function showTab(tab) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        event.target.classList.add('active');
+        document.getElementById('login-form').style.display = tab === 'login' ? 'block' : 'none';
+        document.getElementById('register-form').style.display = tab === 'register' ? 'block' : 'none';
+    }
+
+    function showMsg(id, msg, type) {
+        const el = document.getElementById(id);
+        el.innerHTML = `<div class="message ${type}">${msg}</div>`;
+    }
+
+    async function register() {
+        const data = {
+            username: document.getElementById('reg-username').value,
+            email: document.getElementById('reg-email').value,
+            password: document.getElementById('reg-password').value,
+            is_admin: document.getElementById('reg-admin').checked
+        };
+        const res = await fetch(`${API}/users/register/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (res.ok) {
+            token = json.access;
+            currentUser = json.user;
+            localStorage.setItem('token', token);
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            showDashboard();
+        } else {
+            showMsg('reg-msg', JSON.stringify(json), 'error');
+        }
+    }
+
+    async function login() {
+        const data = {
+            username: document.getElementById('login-username').value,
+            password: document.getElementById('login-password').value
+        };
+        const res = await fetch(`${API}/users/login/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        });
+        const json = await res.json();
+        if (res.ok) {
+            token = json.access;
+            currentUser = json.user;
+            localStorage.setItem('token', token);
+            localStorage.setItem('user', JSON.stringify(currentUser));
+            showDashboard();
+        } else {
+            showMsg('login-msg', 'Invalid credentials!', 'error');
+        }
+    }
+
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        token = null;
+        document.getElementById('auth-section').style.display = 'block';
+        document.getElementById('dashboard-section').style.display = 'none';
+    }
+
+    function showDashboard() {
+        document.getElementById('auth-section').style.display = 'none';
+        document.getElementById('dashboard-section').style.display = 'block';
+        document.getElementById('username-display').textContent = currentUser.username;
+        loadTasks();
+    }
+
+    async function loadTasks() {
+        const res = await fetch(`${API}/tasks/`, {
+            headers: {'Authorization': `Bearer ${token}`}
+        });
+        const tasks = await res.json();
+        const list = document.getElementById('tasks-list');
+        if (tasks.length === 0) {
+            list.innerHTML = '<p style="color:#999">No tasks yet. Create one!</p>';
+            return;
+        }
+        list.innerHTML = tasks.map(t => `
+            <div class="task-item">
+                <h3>${t.title} <span class="badge ${t.priority}">${t.priority}</span>
+                ${t.completed ? '✅' : '🔄'}</h3>
+                <p>${t.description || 'No description'}</p>
+                <p style="font-size:12px;color:#999">Created: ${new Date(t.created_at).toLocaleDateString()}</p>
+                <button onclick="deleteTask(${t.id})" class="danger" style="font-size:12px;padding:5px 10px">Delete</button>
+                <button onclick="toggleTask(${t.id}, ${t.completed})" style="font-size:12px;padding:5px 10px">
+                    ${t.completed ? 'Mark Incomplete' : 'Mark Complete'}
+                </button>
+            </div>
+        `).join('');
+    }
+
+    async function createTask() {
+        const data = {
+            title: document.getElementById('task-title').value,
+            description: document.getElementById('task-desc').value,
+            priority: document.getElementById('task-priority').value
+        };
+        const res = await fetch(`${API}/tasks/`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+            body: JSON.stringify(data)
+        });
+        if (res.ok) {
+            showMsg('task-msg', 'Task created!', 'success');
+            document.getElementById('task-title').value = '';
+            document.getElementById('task-desc').value = '';
+            loadTasks();
+        } else {
+            showMsg('task-msg', 'Error creating task!', 'error');
+        }
+    }
+
+    async function deleteTask(id) {
+        await fetch(`${API}/tasks/${id}/`, {
+            method: 'DELETE',
+            headers: {'Authorization': `Bearer ${token}`}
+        });
+        loadTasks();
+    }
+
+    async function toggleTask(id, completed) {
+        await fetch(`${API}/tasks/${id}/`, {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`},
+            body: JSON.stringify({completed: !completed})
+        });
+        loadTasks();
+    }
+</script>
+</body>
+</html>
